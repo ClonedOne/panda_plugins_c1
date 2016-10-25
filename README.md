@@ -19,4 +19,4 @@ Use the plugin during the replay of a PANDA recording with:
 
     /path_to_qemu/x86_64-softmmu/qemu-system-x86_64 -m 1G -replay /path_to_logs/logs/rr/[replay name] -monitor stdio -panda osi -os windows-32-7 -panda investigator:file=[replay name (output file name)]
 
-This plugin is intended to be used together with the Pandalog Investigator application.
+This plugin is intended to be used together with the [Pandalog Investigator](https://github.com/ClonedOne/pandalog_investigator) application.

@@ -64,7 +64,7 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
     // Suspect instructions
     int suspects_size = 3;
     string instr_suspects [suspects_size] = {"cpuid", "icepb", "fnstcw"};
-    char bug_bytes[] = { 0x08, 0x7C, 0xE3, 0x04 };
+    char bug_bytes[] = {0x08, 0x7C, 0xE3, 0x04};
 
     if (!init_capstone_done) init_capstone(env);
     panda_virtual_memory_rw(env, tb->pc, mem, tb->size, false);
@@ -84,7 +84,7 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
         if (insn[i].size > 15){
             suspect = true;
         }
-	
+	// Check instruction bytes against known bug in bitwise or	
 	int comparison;
 	comparison = memcmp(bug_bytes, insn[i].bytes, sizeof(bug_bytes));
 	if (comparison == 0){

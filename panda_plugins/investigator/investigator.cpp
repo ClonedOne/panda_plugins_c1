@@ -64,6 +64,7 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
     // Suspect instructions
     int suspects_size = 3;
     string instr_suspects [suspects_size] = {"cpuid", "icepb", "fnstcw"};
+    char bug_bytes[] = { 0x08, 0x7C, 0xE3, 0x04 };
 
     if (!init_capstone_done) init_capstone(env);
     panda_virtual_memory_rw(env, tb->pc, mem, tb->size, false);
@@ -72,7 +73,7 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
     for (unsigned i = 0; i < count; i++){
         bool suspect = false;
         string cur_instr = string(insn[i].mnemonic);
-      
+
         // Check the instruction mnemonic against the array of known suspect instructions
         for (int j = 0; j < suspects_size; j++) {
             if (cur_instr.find(instr_suspects[j]) != std::string::npos){
@@ -83,6 +84,13 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
         if (insn[i].size > 15){
             suspect = true;
         }
+	
+	int comparison;
+	comparison = memcmp(bug_bytes, insn[i].bytes, sizeof(bug_bytes));
+	if (comparison == 0){
+	    suspect = true;
+	}
+
         // If suspect, output the specifics of the instruction
         if (suspect){
             OsiProc *current = get_current_process(env);
@@ -99,8 +107,7 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
                 sprintf(str_byte, "%02X", insn[i].bytes[k]);
                 out_file << str_byte;
             }
-            out_file << endl << endl;
-            
+   	    out_file << endl << endl; 
             free_osiproc(current);
         }
     }
@@ -115,7 +122,7 @@ int open_out_file(){
     struct passwd *pw = getpwuid(getuid());
     const char *homedir = pw->pw_dir;
     char *ext = "_clues.txt";
-    char *folder =  "/";
+    char *folder =  "/clues/";
     char *output_path = (char *) malloc (strlen(homedir) + strlen(folder) + strlen(file_name) + strlen(ext) + 1);
     
     strcpy (output_path, homedir);

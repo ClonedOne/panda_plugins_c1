@@ -11,6 +11,7 @@ Such instructions are:
 * cpuid
 * fnstcw
 * any instruction whose lenght is more than 15 bytes (like REP prefix repetitions)
+* known bug in bitwise or [or %bh,0x04(%ebx)]
 
 If any of the instructions above is identified, the plugin will output the corresponding process, pid, ppid, instruction mnemonic, operands, size and bytes, in a file with the name specified by the passed argument.
 

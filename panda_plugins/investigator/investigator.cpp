@@ -23,6 +23,7 @@ extern "C" {
 #include <unistd.h>
 #include <sys/types.h>
 #include <pwd.h>
+#include <cstring>
 
 // These need to be extern "C" so that the ABI is compatible with
 // QEMU/PANDA, which is written in C
@@ -65,6 +66,7 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
     int suspects_size = 3;
     string instr_suspects [suspects_size] = {"cpuid", "icebp", "fnstcw"};
     char bug_bytes[] = {0x08, 0x7C, 0xE3, 0x04};
+    char icebp_bytes[] = {0xF1};
 
     if (!init_capstone_done) init_capstone(env);
     panda_virtual_memory_rw(env, tb->pc, mem, tb->size, false);
@@ -86,10 +88,16 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
         }
 	// Check instruction bytes against known bug in bitwise or	
 	int comparison;
-	comparison = memcmp(bug_bytes, insn[i].bytes, sizeof(bug_bytes));
+	comparison = std::memcmp(bug_bytes, insn[i].bytes, sizeof(bug_bytes));
 	if (comparison == 0){
 	    suspect = true;
 	}
+	// Check icebp opcode
+	comparison = std::memcmp(icebp_bytes, insn[i].bytes, sizeof(icebp_bytes));
+        if (comparison == 0){
+            suspect = true;
+        }
+
 
         // If suspect, output the specifics of the instruction
         if (suspect){

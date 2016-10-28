@@ -127,14 +127,15 @@ static int after_block_translate(CPUState *env, TranslationBlock *tb) {
 int open_out_file(){
     panda_arg_list *args = panda_get_args("investigator");
     const char *file_name = panda_parse_string(args, "file", NULL);
-    struct passwd *pw = getpwuid(getuid());
-    const char *homedir = pw->pw_dir;
+    //struct passwd *pw = getpwuid(getuid());
+    //const char *homedir = pw->pw_dir;
     char *ext = "_clues.txt";
     char *folder =  "/clues/";
-    char *output_path = (char *) malloc (strlen(homedir) + strlen(folder) + strlen(file_name) + strlen(ext) + 1);
+    //char *output_path = (char *) malloc (strlen(homedir) + strlen(folder) + strlen(file_name) + strlen(ext) + 1);
+    char *output_path = (char *) malloc (strlen(file_name) + strlen(ext) + 1);
     
-    strcpy (output_path, homedir);
-    strcat (output_path, folder);
+    //strcpy (output_path, homedir);
+    //strcat (output_path, folder);
     strcat (output_path, file_name);
     strcat (output_path, ext);
 

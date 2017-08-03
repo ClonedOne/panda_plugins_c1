@@ -12,8 +12,8 @@ extern "C" {
     #include "panda_plugin_plugin.h"
     #include <capstone/capstone.h>
     #include "pandalog.h"
-    #include "/home/giorgio/panda/qemu/panda_plugins/osi/osi_types.h"
-    #include "/home/giorgio/panda/qemu/panda_plugins/osi/osi_ext.h"
+    #include "/home/yogaub/projects/panda/qemu/panda_plugins/osi/osi_types.h"
+    #include "/home/yogaub/projects/panda/qemu/panda_plugins/osi/osi_ext.h"
 
 }
 

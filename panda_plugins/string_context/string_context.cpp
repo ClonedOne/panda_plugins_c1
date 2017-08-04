@@ -51,9 +51,9 @@ struct string_pos {
 };
 
 struct string_context {
-    int writing_pos;
-    int string_start;
-	int to_fill;	
+    size_t writing_pos;
+    size_t string_start;
+	size_t to_fill;	
     uint8_t window[MAX_WINDOW];
 };
 
@@ -69,6 +69,24 @@ int n_callers = 16;
 
 FILE *mem_report = NULL;
 
+
+// helper function to unfold the circular buffer and print it to file
+void output_context(string_context context) {
+    char final_string[MAX_WINDOW];
+    int remaining = MAX_WINDOW - context.writing_pos;
+
+    // the first writing_pos bytes of the window need to be moved to the last
+    // writing_pos bytes of the output buffer
+    // if there are remaining bytes in the buffer those must
+    // be copied at the beginning of the output buffer 
+    memcpy(&(final_string[remaining]), context.window, context.writing_pos);
+    memcpy(final_string, &(context.window[context.writing_pos]), remaining);
+
+    fprintf(mem_report, "%s", final_string);
+    context.writing_pos = 0;
+}
+
+
 int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
                  target_ulong size, void *buf, bool is_write,
                  std::map<prog_point,string_pos> &text_tracker) {
@@ -81,13 +99,13 @@ int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
 	if (context.to_fill > 0) {
 
 		// compute the actual number of bytes to insert in context window
-		int fill_size = (context.to_fill - size >= 0) ? size : context.to_fill;
+		size_t fill_size = (context.to_fill > size) ? size : context.to_fill;
 
 		// if the fill_size is greater than available space at buffer end,
 		// new bytes must be inserted at buffer head
 		if (fill_size > MAX_WINDOW - context.writing_pos) {
-			int available = MAX_WINDOW - context.writing_pos;
-			int remaining = fill_size - available;
+		    size_t available = MAX_WINDOW - context.writing_pos;
+			size_t remaining = fill_size - available;
 
 			memcpy(&(context.window[context.writing_pos]), buf, available);
 			context.writing_pos = 0;
@@ -104,19 +122,9 @@ int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
 
 		// if to_fill is 0 it means the buffer is ready to be written on file
 		if (context.to_fill == 0) {	
-            char final_string[MAX_WINDOW];
-            int remaining = MAX_WINDOW - context.writing_pos;
-
-            // the first writing_pos bytes of the window need to be moved to the last
-            // writing_pos bytes of the output buffer
-            // if there are remaining bytes in the buffer those must
-            // be copied at the beginning of the output buffer 
-            memcpy(&(final_string[remaining]), context.window, context.writing_pos);
-            memcpy(final_string, &(context.window[context.writing_pos]), remaining);
-
-            fprintf(mem_report, "%s", final_string);
-			context.writing_pos = 0;
-		}
+            output_context(context);
+            contexts.erase(p);
+   		}
 
         return 1;
 		
@@ -138,6 +146,8 @@ int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
             }
             else {
                 sp.val[str_idx] = 0;
+                contexts.erase(p);
+                return 1;
             }
 
             // if it is the last characyer of the string,
@@ -146,6 +156,7 @@ int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
                 sp.val[str_idx] = 0;
                 int str_len = context.writing_pos - context.string_start;
                 context.to_fill = (MAX_WINDOW - str_len) / 2;
+                printf("string %d was found!\n", str_idx);
             }
 
             context.writing_pos = (context.writing_pos + 1) % MAX_WINDOW;
@@ -255,6 +266,11 @@ bool init_plugin(void *self) {
 }
 
 void uninit_plugin(void *self) {
+    map<prog_point, string_context>::iterator it;
+    for ( it = contexts.begin(); it != contexts.end(); it++ ){
+        string_context cur_con = it -> second;
+        output_context(cur_con); 
+    } 
     fclose(mem_report);
 }
 

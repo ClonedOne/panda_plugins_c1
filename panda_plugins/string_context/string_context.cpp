@@ -28,7 +28,6 @@ using namespace std;
 #include "panda_plugin_plugin.h"
 
 #define MAX_STRINGS 100
-#define MAX_CALLERS 128
 #define MAX_STRLEN 1024
 #define MAX_WINDOW 4096
 
@@ -43,88 +42,80 @@ int mem_read_callback(CPUState *env, target_ulong pc, target_ulong addr, target_
 }
 
 
-// Silly: since we use these as map values, they have to be
-// copy constructible. Plain arrays aren't, but structs containing
-// arrays are. So we make these goofy wrappers.
-struct string_pos {
-    uint32_t val[MAX_STRINGS];
-};
+size_t read_start = 0;
+size_t read_pos  = 0;
+size_t read_fill = 0;
 
-struct string_context {
-    size_t writing_pos;
-    size_t string_start;
-	size_t to_fill;	
-    uint8_t window[MAX_WINDOW];
-};
+size_t write_start = 0;
+size_t write_pos = 0;
+size_t write_fill= 0;
 
-std::map<prog_point, string_pos> read_text_tracker;
-std::map<prog_point, string_pos> write_text_tracker;
-std::map<prog_point, string_context> contexts;
+uint8_t write_window[MAX_WINDOW] = {0};
+uint8_t read_window[MAX_WINDOW] = {0};
+uint8_t tofind[MAX_STRINGS][MAX_STRLEN] = {0};
 
-uint8_t tofind[MAX_STRINGS][MAX_STRLEN];
-uint32_t strlens[MAX_STRINGS];
+uint32_t strlens[MAX_STRINGS] = {0};
+uint32_t read_iters[MAX_STRINGS] = {0};
+uint32_t write_iters[MAX_STRINGS] = {0};
 
 int num_strings = 0;
-int n_callers = 16;
 
 FILE *mem_report = NULL;
 
 
 // helper function to unfold the circular buffer and print it to file
-void output_context(string_context context) {
-    char final_string[MAX_WINDOW];
-    int remaining = MAX_WINDOW - context.writing_pos;
+void output_context(bool is_read, uint8_t *window, size_t &pos) {
+    char final_string[MAX_WINDOW] = {'_'};
+    int remaining = MAX_WINDOW - pos;
 
     // the first writing_pos bytes of the window need to be moved to the last
     // writing_pos bytes of the output buffer
     // if there are remaining bytes in the buffer those must
     // be copied at the beginning of the output buffer 
-    memcpy(&(final_string[remaining]), context.window, context.writing_pos);
-    memcpy(final_string, &(context.window[context.writing_pos]), remaining);
+    memcpy(&(final_string[remaining]), window, pos);
+    memcpy(final_string, &(window[pos]), remaining);
 
-    fprintf(mem_report, "%s", final_string);
-    context.writing_pos = 0;
+    if (is_read) 
+        fprintf(mem_report, "Read:\n");
+    else 
+        fprintf(mem_report, "Write:\n");
+
+    fprintf(mem_report, "%s\n\n", final_string);
+    pos = 0;
 }
 
 
-int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
-                 target_ulong size, void *buf, bool is_write,
-                 std::map<prog_point,string_pos> &text_tracker) {
-    prog_point p = {};
-    get_prog_point(env, &p);
+int mem_callback(bool is_read, target_ulong size, void *buf, uint8_t *window, size_t &pos, size_t &start, size_t &to_fill, uint32_t *iters) {
 
-    string_pos &sp = text_tracker[p];
-    string_context context = contexts[p];
-	
-	if (context.to_fill > 0) {
+	if (to_fill > 0) {
 
 		// compute the actual number of bytes to insert in context window
-		size_t fill_size = (context.to_fill > size) ? size : context.to_fill;
+		size_t fill_size = (to_fill > size) ? size : to_fill;
 
 		// if the fill_size is greater than available space at buffer end,
 		// new bytes must be inserted at buffer head
-		if (fill_size > MAX_WINDOW - context.writing_pos) {
-		    size_t available = MAX_WINDOW - context.writing_pos;
+		if (fill_size > MAX_WINDOW - pos) {
+		    size_t available = MAX_WINDOW - pos;
 			size_t remaining = fill_size - available;
 
-			memcpy(&(context.window[context.writing_pos]), buf, available);
-			context.writing_pos = 0;
+			memcpy(&(window[pos]), buf, available);
+			pos = 0;
 
-			memcpy(&(context.window[context.writing_pos]), &(((uint8_t *)buf)[available]), remaining);
-			context.writing_pos = remaining;
+			memcpy(&(window[pos]), &(((uint8_t *)buf)[available]), remaining);
+			pos = remaining;
 		}
 		else {
-			memcpy(&(context.window[context.writing_pos]), buf, fill_size);
-			context.writing_pos += fill_size;
+			memcpy(&(window[pos]), buf, fill_size);
+			pos += fill_size;
 		}
 
-		context.to_fill -= fill_size;
+		to_fill -= fill_size;
 
 		// if to_fill is 0 it means the buffer is ready to be written on file
-		if (context.to_fill == 0) {	
-            output_context(context);
-            contexts.erase(p);
-   		}
+		if (to_fill == 0) {
+            output_context(is_read, window, pos);
+            memset(window, 0, MAX_WINDOW * sizeof(uint8_t));
+        }
 
         return 1;
 		
@@ -132,47 +123,43 @@ int mem_callback(CPUState *env, target_ulong pc, target_ulong addr,
 
     for (unsigned int i = 0; i < size; i++) {
         uint8_t val = ((uint8_t *)buf)[i];
+        window[pos] = val;
+
         for(int str_idx = 0; str_idx < num_strings; str_idx++) {
 
-            context.window[context.writing_pos] = val;
-			
-            if (tofind[str_idx][sp.val[str_idx]] == val) {
-                sp.val[str_idx]++;
+            if (tofind[str_idx][iters[str_idx]] == val) {
+                iters[str_idx]++;
 
-				// If this is the first character of the string
+				// If this was the first character of the string
 				// reset the string starting position
-				if (sp.val[str_idx] == 0) 
-					context.string_start = context.writing_pos;
+				if (iters[str_idx] == 1) 
+					start = pos;
             }
             else {
-                sp.val[str_idx] = 0;
-                contexts.erase(p);
-                return 1;
+                iters[str_idx] = 0;
             }
 
             // if it is the last characyer of the string,
             // the string is found
-            if (sp.val[str_idx] == strlens[str_idx]) {
-                sp.val[str_idx] = 0;
-                int str_len = context.writing_pos - context.string_start;
-                context.to_fill = (MAX_WINDOW - str_len) / 2;
+            if (iters[str_idx] == strlens[str_idx]) {
+                iters[str_idx] = 0;
+                to_fill = (MAX_WINDOW - strlens[str_idx]) / 2;
                 printf("string %d was found!\n", str_idx);
             }
 
-            context.writing_pos = (context.writing_pos + 1) % MAX_WINDOW;
-
         }
+        pos = (pos + 1) % MAX_WINDOW;
     }
 
     return 1;
 }
 
 int mem_read_callback(CPUState *env, target_ulong pc, target_ulong addr, target_ulong size, void *buf) {
-    return mem_callback(env, pc, addr, size, buf, false, read_text_tracker);
+    return mem_callback(true, size, buf, read_window, read_pos, read_start, read_fill, read_iters);
 }
 
 int mem_write_callback(CPUState *env, target_ulong pc, target_ulong addr, target_ulong size, void *buf) {
-    return mem_callback(env, pc, addr, size, buf, true, write_text_tracker);
+    return mem_callback(false, size, buf, write_window, write_pos, write_start, write_fill, write_iters);
 }
 
 
@@ -180,27 +167,14 @@ bool init_plugin(void *self) {
     panda_cb pcb;
 
     printf("Initializing plugin stringsearch\n");
-
     panda_require("callstack_instr");
+    panda_arg_list *args = panda_get_args("string_context");
 
-    panda_arg_list *args = panda_get_args("stringsearch");
-
-    const char *arg_str = panda_parse_string(args, "str", "");
-    size_t arg_len = strlen(arg_str);
-    if (arg_len > 0) {
-        memcpy(tofind[num_strings], arg_str, arg_len);
-        strlens[num_strings] = arg_len;
-        num_strings++;
-    }
-
-    n_callers = panda_parse_uint64(args, "callers", 16);
-    if (n_callers > MAX_CALLERS) n_callers = MAX_CALLERS;
-
-    const char *prefix = panda_parse_string(args, "name", "stringsearch");
+    const char *prefix = panda_parse_string(args, "name", "string_context");
     char stringsfile[128] = {};
     sprintf(stringsfile, "%s_search_strings.txt", prefix);
 
-    printf ("search strings file [%s]\n", stringsfile);
+    printf ("string_context file [%s]\n", stringsfile);
 
     std::ifstream search_strings(stringsfile);
     if (!search_strings) {
@@ -266,11 +240,10 @@ bool init_plugin(void *self) {
 }
 
 void uninit_plugin(void *self) {
-    map<prog_point, string_context>::iterator it;
-    for ( it = contexts.begin(); it != contexts.end(); it++ ){
-        string_context cur_con = it -> second;
-        output_context(cur_con); 
-    } 
+    if (read_fill > 0) 
+        output_context(true, read_window, read_pos);
+    if (write_fill > 0)
+        output_context(false, write_window, write_pos);
     fclose(mem_report);
 }
 

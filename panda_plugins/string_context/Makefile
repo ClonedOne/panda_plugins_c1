@@ -16,6 +16,6 @@ PLUGIN_OBJFILES=$(PLUGIN_OBJ_DIR)/$(PLUGIN_NAME).o
 
 # Plugin dynamic library. Please stick with the panda_ naming convention.
 $(PLUGIN_TARGET_DIR)/panda_$(PLUGIN_NAME).so: $(PLUGIN_OBJFILES)
-	$(call quiet-command,$(CC) $(QEMU_CFLAGS) -shared -o $@ $^ $(LDFLAGS) $(LIBS),"  PLUGIN  $@")
+	$(call quiet-command,$(CC) $(QEMU_CFLAGS) -g -shared -o $@ $^ $(LDFLAGS) $(LIBS),"  PLUGIN  $@")
 
 all: $(PLUGIN_OBJ_DIR) $(PLUGIN_TARGET_DIR)/panda_$(PLUGIN_NAME).so

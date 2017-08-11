@@ -65,14 +65,19 @@ FILE *mem_report = NULL;
 
 // helper function to unfold the circular buffer and print it to file
 void output_context(bool is_read, uint8_t *window, size_t &pos) {
-    char final_string[MAX_WINDOW] = {'_'};
+    char final_string[MAX_WINDOW];
+    memset(final_string, '_', MAX_WINDOW);
+    printf("initial state\n%s\n\n", final_string);
     int remaining = MAX_WINDOW - pos;
 
-    // the first writing_pos bytes of the window need to be moved to the last
-    // writing_pos bytes of the output buffer
+    // the first pos bytes of the window need to be moved to the last
+    // pos bytes of the output buffer
     // if there are remaining bytes in the buffer those must
     // be copied at the beginning of the output buffer 
     memcpy(&(final_string[remaining]), window, pos);
+    char temp[pos];
+    memcpy(temp, window, pos);
+    printf("content in 0 to pos:\n%s\n\n", temp);
     memcpy(final_string, &(window[pos]), remaining);
 
     if (is_read) 
@@ -81,49 +86,31 @@ void output_context(bool is_read, uint8_t *window, size_t &pos) {
         fprintf(mem_report, "Write:\n");
 
     fprintf(mem_report, "%s\n\n", final_string);
+    printf("final state\n%s\n\n", final_string);
     pos = 0;
 }
 
 
 int mem_callback(bool is_read, target_ulong size, void *buf, uint8_t *window, size_t &pos, size_t &start, size_t &to_fill, uint32_t *iters) {
 
-	if (to_fill > 0) {
-
-		// compute the actual number of bytes to insert in context window
-		size_t fill_size = (to_fill > size) ? size : to_fill;
-
-		// if the fill_size is greater than available space at buffer end,
-		// new bytes must be inserted at buffer head
-		if (fill_size > MAX_WINDOW - pos) {
-		    size_t available = MAX_WINDOW - pos;
-			size_t remaining = fill_size - available;
-
-			memcpy(&(window[pos]), buf, available);
-			pos = 0;
-
-			memcpy(&(window[pos]), &(((uint8_t *)buf)[available]), remaining);
-			pos = remaining;
-		}
-		else {
-			memcpy(&(window[pos]), buf, fill_size);
-			pos += fill_size;
-		}
-
-		to_fill -= fill_size;
-
-		// if to_fill is 0 it means the buffer is ready to be written on file
-		if (to_fill == 0) {
-            output_context(is_read, window, pos);
-            memset(window, 0, MAX_WINDOW * sizeof(uint8_t));
-        }
-
-        return 1;
-		
-	}
-
     for (unsigned int i = 0; i < size; i++) {
         uint8_t val = ((uint8_t *)buf)[i];
-        window[pos] = val;
+        if (val != 0){
+            window[pos] = val;
+
+            // if to_fill is non zero it must fill the right side of the window
+            if (to_fill > 0) {
+                to_fill--;
+
+                if (to_fill == 0) {
+                    output_context(is_read, window, pos);
+                    memset(window, 0, MAX_WINDOW * sizeof(uint8_t));
+                }
+
+                pos = (pos + 1) % MAX_WINDOW;
+                continue;
+            }
+        }
 
         for(int str_idx = 0; str_idx < num_strings; str_idx++) {
 
@@ -148,7 +135,9 @@ int mem_callback(bool is_read, target_ulong size, void *buf, uint8_t *window, si
             }
 
         }
-        pos = (pos + 1) % MAX_WINDOW;
+
+        if (val != 0)
+            pos = (pos + 1) % MAX_WINDOW;
     }
 
     return 1;

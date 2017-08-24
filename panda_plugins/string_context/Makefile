@@ -8,14 +8,15 @@ PLUGIN_NAME=string_context
 include ../extra_plugins_panda.mak
 
 # If you need custom CFLAGS or LIBS, set them up here
-# CFLAGS+=-std=c++11
-# LIBS+=-lcapstone
+CFLAGS+=-std=c++11
+#LIBS+=-lcapstone
+#LIBS+=-lcapstone
 
 # Object files comprising the plugin.
 PLUGIN_OBJFILES=$(PLUGIN_OBJ_DIR)/$(PLUGIN_NAME).o
 
 # Plugin dynamic library. Please stick with the panda_ naming convention.
 $(PLUGIN_TARGET_DIR)/panda_$(PLUGIN_NAME).so: $(PLUGIN_OBJFILES)
-	$(call quiet-command,$(CC) $(QEMU_CFLAGS) -g -shared -o $@ $^ $(LDFLAGS) $(LIBS),"  PLUGIN  $@")
+	$(call quiet-command,$(CXX) $(QEMU_CFLAGS) -g -shared -o $@ $^ $(LDFLAGS) $(LIBS),"  PLUGIN  $@")
 
 all: $(PLUGIN_OBJ_DIR) $(PLUGIN_TARGET_DIR)/panda_$(PLUGIN_NAME).so

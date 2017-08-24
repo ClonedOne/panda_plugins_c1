@@ -1,6 +1,6 @@
 # XXX You will need to change this!
 # Tell it where to find panda
-SRC_PATH=/home/yogaub/projects/panda/qemu
+SRC_PATH=/home/gio/projects/panda/qemu
 
 include $(SRC_PATH)/config-host.mak
 include $(SRC_PATH)/$(TARGET_DIR)/config-devices.mak

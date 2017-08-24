@@ -22,9 +22,8 @@ extern "C" {
 #include <sstream>
 using namespace std;
 
-#include "/home/yogaub/projects/panda/qemu/panda_plugins/common/prog_point.h"
+#include "/home/gio/projects/panda/qemu/panda_plugins/common/prog_point.h"
 #include "pandalog.h"
-#include "/home/yogaub/projects/panda/qemu/panda_plugins/callstack_instr/callstack_instr_ext.h"
 #include "panda_plugin_plugin.h"
 
 #define MAX_STRINGS 100
@@ -95,21 +94,33 @@ int mem_callback(bool is_read, target_ulong size, void *buf, uint8_t *window, si
 
     for (unsigned int i = 0; i < size; i++) {
         uint8_t val = ((uint8_t *)buf)[i];
-        if (val != 0){
-            window[pos] = val;
 
-            // if to_fill is non zero it must fill the right side of the window
-            if (to_fill > 0) {
-                to_fill--;
-
-                if (to_fill == 0) {
-                    output_context(is_read, window, pos);
-                    memset(window, 0, MAX_WINDOW * sizeof(uint8_t));
-                }
-
-                pos = (pos + 1) % MAX_WINDOW;
+		// remove punctuation and nulls and cast to uppercase
+		 switch (val) {
+            case 0: case '!': case '"': case '#': case '$':
+            case '%': case '&': case '\'': case '(': case ')':
+            case '*': case '+': case ',': case '-': case '.':
+            case '/': case ':': case ';': case '<': case '=':
+            case '>': case '?': case '@': case '[': case '\\':
+            case ']': case '^': case '_': case '`': case '{':
+            case '|': case '}': case '~':
                 continue;
+        }
+		if ('a' <= val && val <= 'z') val &= ~0x20;
+
+        window[pos] = val;
+
+        // if to_fill is non zero it must fill the right side of the window
+        if (to_fill > 0) {
+            to_fill--;
+
+            if (to_fill == 0) {
+                output_context(is_read, window, pos);
+                memset(window, 0, MAX_WINDOW * sizeof(uint8_t));
             }
+
+            pos = (pos + 1) % MAX_WINDOW;
+            continue;
         }
 
         for(int str_idx = 0; str_idx < num_strings; str_idx++) {
@@ -136,8 +147,7 @@ int mem_callback(bool is_read, target_ulong size, void *buf, uint8_t *window, si
 
         }
 
-        if (val != 0)
-            pos = (pos + 1) % MAX_WINDOW;
+        pos = (pos + 1) % MAX_WINDOW;
     }
 
     return 1;
@@ -211,8 +221,6 @@ bool init_plugin(void *self) {
         perror("fopen");
         return false;
     }
-
-    if(!init_callstack_instr_api()) return false;
 
     // Need this to get EIP with our callbacks
     panda_enable_precise_pc();
